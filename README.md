@@ -1,6 +1,6 @@
 # Overview / 概要
 
-The DefragSim project displays a disk defragmentation tool-like animatio.
+The DefragSim project displays a disk defragmentation tool-like animation.
 
 \[日本語\]
 

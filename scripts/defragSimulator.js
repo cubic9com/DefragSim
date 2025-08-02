@@ -190,15 +190,33 @@ class DefragSimulator {
                     this.isInTouchState = true;
                 }
                 
-                // Update explosion animation
+                // Update explosion animation and check if all blocks are off screen
+                let allBlocksOffScreen = true;
+                let hasExplodingBlocks = false;
+                
                 for (let y = 0; y < this.gridManager.getRowCount(); y++) {
                     for (let x = 0; x < this.gridManager.getColumnCount(); x++) {
                         const block = this.gridManager.getBlock(x, y);
                         block.updateExplosion();
+                        
+                        // Check if there are any exploding blocks
+                        if (block.isExploding) {
+                            hasExplodingBlocks = true;
+                            // If any exploding block is still on screen, not all are off screen
+                            if (!block.isOffScreen()) {
+                                allBlocksOffScreen = false;
+                            }
+                        }
                     }
                 }
                 
-                // Reset after the set time has elapsed
+                // If there are exploding blocks and all of them are off screen, reset immediately
+                if (hasExplodingBlocks && allBlocksOffScreen) {
+                    this.reset();
+                    break;
+                }
+                
+                // Reset after the set time has elapsed (fallback)
                 if (millis() - this.touchStateStartTime >= Config.Animation.RESET_DELAY) {
                     this.reset();
                 }
@@ -225,6 +243,12 @@ class DefragSimulator {
     handleTouch(x, y) {
         // Enable audio context on first user interaction
         this.soundManager.enableAudio();
+        
+        // Only allow touch/click during DEFRAGMENTING state or TOUCHED state
+        const currentState = this.uiRenderer.getState();
+        if ((currentState !== AnimationState.DEFRAGMENTING) && (currentState !== AnimationState.TOUCHED)) {
+            return;
+        }
         
         // Set to TOUCHED state
         this.uiRenderer.setState(AnimationState.TOUCHED);

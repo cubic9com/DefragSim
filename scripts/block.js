@@ -221,9 +221,8 @@ class Block {
         this.isExploding = true;
         
         // Calculate the screen coordinates of the block
-        const blockSpacing = 3; // Use the same spacing as in Config
-        const screenX = Config.getGridOffsetX() + this.x * (Config.getBlockWidth() + blockSpacing) + Math.floor(Config.getBlockWidth() / 2);
-        const screenY = Config.getGridOffsetY() + this.y * (Config.getBlockHeight() + blockSpacing) + Math.floor(Config.getBlockHeight() / 2);
+        const screenX = Config.getGridOffsetX() + this.x * (Config.getBlockWidth() + 3) + Math.floor(Config.getBlockWidth() / 2);
+        const screenY = Config.getGridOffsetY() + this.y * (Config.getBlockHeight() + 3) + Math.floor(Config.getBlockHeight() / 2);
         
         // Calculate the direction vector from the touch coordinates (screen coordinate system)
         const dirX = screenX - touchX;
@@ -254,5 +253,20 @@ class Block {
         // Update position
         this.animX += this.explodeVelocityX;
         this.animY += this.explodeVelocityY;
+    }
+    
+    // Check if the block is outside the screen during explosion
+    isOffScreen() {
+        if (!this.isExploding) {
+            return false;
+        }
+        
+        // Calculate screen boundaries in grid coordinates
+        const maxY = Config.getGridRows() + 5; // Add some buffer below the screen
+        const minX = -5; // Add some buffer to the left
+        const maxX = Config.getGridCols() + 5; // Add some buffer to the right
+        
+        // Check if the block is outside the screen boundaries
+        return (this.animY > maxY || this.animX < minX || this.animX > maxX);
     }
 }
