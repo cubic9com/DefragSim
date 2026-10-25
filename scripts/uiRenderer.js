@@ -199,11 +199,20 @@ class UIRenderer {
         ctx.fillStyle = Colors.UI.WINDOW_BACK;
         ctx.fillRect(0, 0, this.screenWidth, this.screenHeight);
         
+        const gridOffsetX = Config.getGridOffsetX();
+        const gridOffsetY = Config.getGridOffsetY();
+        const blockWidth = Config.getBlockWidth();
+        const blockHeight = Config.getBlockHeight();
+        const blockStepX = blockWidth + 3;
+        const blockStepY = blockHeight + 3;
+        const rows = gridManager.getRowCount();
+        const cols = gridManager.getColumnCount();
+        
         // Fill the grid area background with white
-        const gridX = Config.getGridOffsetX() - 3;
-        const gridY = Config.getGridOffsetY() - 3;
-        const gridWidth = Config.getGridCols() * (Config.getBlockWidth() + 3) + 4;
-        const gridHeight = Config.getGridRows() * (Config.getBlockHeight() + 3) + 4;
+        const gridX = gridOffsetX - 3;
+        const gridY = gridOffsetY - 3;
+        const gridWidth = cols * blockStepX + 4;
+        const gridHeight = rows * blockStepY + 4;
         
         ctx.fillStyle = Colors.UI.GRID_BACK;
         ctx.fillRect(gridX, gridY, gridWidth, gridHeight);
@@ -216,14 +225,16 @@ class UIRenderer {
         this.drawUI();
         
         // Draw blocks
-        for (let y = 0; y < gridManager.getRowCount(); y++) {
-            for (let x = 0; x < gridManager.getColumnCount(); x++) {
-                gridManager.getBlock(x, y).draw(ctx, this.state);
+        const state = this.state;
+        for (let y = 0; y < rows; y++) {
+            const baseScreenY = gridOffsetY + y * blockStepY;
+            for (let x = 0; x < cols; x++) {
+                gridManager.getBlock(x, y).draw(ctx, state, gridOffsetX + x * blockStepX, baseScreenY, blockWidth, blockHeight);
             }
         }
         
         // Draw hit counter
-        if (this.state === AnimationState.TOUCHED) {
+        if (state === AnimationState.TOUCHED) {
             this.drawHitCounter();
         }
     }

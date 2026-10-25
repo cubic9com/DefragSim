@@ -19,6 +19,7 @@ class AnimationManager {
         this.driveInfoPhase2ScanX = 0;
         this.driveInfoPhase2ScanY = 0;
         this.driveInfoPhase2ScanCompleted = false;
+        this.totalBlocksCache = -1;
     }
     
     // Reset
@@ -30,6 +31,7 @@ class AnimationManager {
         this.driveInfoPhase2ScanX = 0;
         this.driveInfoPhase2ScanY = 0;
         this.driveInfoPhase2ScanCompleted = false;
+        this.totalBlocksCache = -1;
     }
     
     // Block update process in reading drive info phase 1
@@ -90,84 +92,41 @@ class AnimationManager {
         }
     }
     
-    // Collect positions of moving and reading blocks
-    collectMovingAndReadingBlocks() {
+    updateBlocksInDefragmenting() {
+        const rows = this.gridManager.getRowCount();
+        const cols = this.gridManager.getColumnCount();
+        
         const movingBlockPositions = [];
         const readingBlockPositions = [];
         
-        for (let y = 0; y < this.gridManager.getRowCount(); y++) {
-            for (let x = 0; x < this.gridManager.getColumnCount(); x++) {
+        for (let y = 0; y < rows; y++) {
+            for (let x = 0; x < cols; x++) {
                 const block = this.gridManager.getBlock(x, y);
                 if (block.isMoving) {
-                    // Record the position of moving blocks
-                    movingBlockPositions.push({ x, y });
+                    movingBlockPositions.push({ x, y, block });
                 } else if (block.state === BlockState.READING) {
-                    // Record the position of blocks being read (source blocks)
-                    readingBlockPositions.push({ x, y });
+                    readingBlockPositions.push({ x, y, block });
                 }
+                block.updateMoving();
             }
         }
         
-        return { movingBlockPositions, readingBlockPositions };
-    }
-    
-    // Update all blocks
-    updateAllBlocks() {
-        for (let y = 0; y < this.gridManager.getRowCount(); y++) {
-            for (let x = 0; x < this.gridManager.getColumnCount(); x++) {
-                this.gridManager.getBlock(x, y).updateMoving();
-            }
-        }
-    }
-    
-    // Process blocks that have completed movement
-    processCompletedBlocks(movingBlockPositions, readingBlockPositions) {
         let anyBlockCompleted = false;
-        
-        // Process blocks that have completed movement
-        for (const pos of movingBlockPositions) {
-            const x = pos.x;
-            const y = pos.y;
-            const block = this.gridManager.getBlock(x, y);
-            
-            // Check if movement is complete (when isMoving flag becomes false)
+        for (const { x, y, block } of movingBlockPositions) {
             if (!block.isMoving) {
                 anyBlockCompleted = true;
-                
-                // If the target position and current position are the same (when movement is complete)
                 if (x === block.targetX && y === block.targetY) {
-                    // Set the target block to optimized
                     block.state = BlockState.OPTIMIZED;
                 }
             }
         }
         
-        // If movement is complete, set the source blocks to free space
         if (anyBlockCompleted) {
-            for (const pos of readingBlockPositions) {
-                const x = pos.x;
-                const y = pos.y;
-                const block = this.gridManager.getBlock(x, y);
-                
-                // Set the source block to free space
+            for (const { block } of readingBlockPositions) {
                 block.state = BlockState.FREE;
                 block.fileID = -1;
             }
         }
-        
-        return anyBlockCompleted;
-    }
-    
-    // Block update process in defragmenting
-    updateBlocksInDefragmenting() {
-        // Collect positions of moving and reading blocks
-        const { movingBlockPositions, readingBlockPositions } = this.collectMovingAndReadingBlocks();
-        
-        // Update all blocks
-        this.updateAllBlocks();
-        
-        // Process blocks that have completed movement
-        this.processCompletedBlocks(movingBlockPositions, readingBlockPositions);
     }
     
     // Update defrag step
@@ -225,7 +184,10 @@ class AnimationManager {
     
     // Calculate defragmentation progress in defragmenting (percentage)
     calculateDefragmentingCompletionPercentage() {
-        const totalBlocks = this.countTotalBlocks();
+        if (this.totalBlocksCache < 0) {
+            this.totalBlocksCache = this.countTotalBlocks();
+        }
+        const totalBlocks = this.totalBlocksCache;
         const unoptimizedBlocks = this.countUnoptimizedBlocks();
         
         if (totalBlocks > 0) {

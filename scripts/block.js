@@ -54,13 +54,25 @@ class Block {
     }
     
     // Draw the block
-    draw(ctx, animState) {
-        // Use floating-point coordinates during animation (movement or explosion)
-        const useX = (this.isMoving || this.isExploding) ? this.animX : this.x;
-        const useY = (this.isMoving || this.isExploding) ? this.animY : this.y;
-        
-        const screenX = Config.getGridOffsetX() + useX * (Config.getBlockWidth() + 3);
-        const screenY = Config.getGridOffsetY() + useY * (Config.getBlockHeight() + 3);
+    draw(ctx, animState, screenX, screenY, bw, bh) {
+        // 引数で座標が渡されない場合（後方互換フォールバック）
+        if (screenX === undefined) {
+            const useX = (this.isMoving || this.isExploding) ? this.animX : this.x;
+            const useY = (this.isMoving || this.isExploding) ? this.animY : this.y;
+            bw = Config.getBlockWidth();
+            bh = Config.getBlockHeight();
+            screenX = Config.getGridOffsetX() + useX * (bw + 3);
+            screenY = Config.getGridOffsetY() + useY * (bh + 3);
+        } else if (this.isMoving || this.isExploding) {
+            // アニメーション中はグリッド座標ではなく animX/Y を使って画面座標を再計算
+            // bw+3 / bh+3 は uiRenderer から渡された値を流用する（Config 呼び出し不要）
+            // gridOffsetX/Y は引数として渡されていないため、事前に渡されたスクリーン座標から
+            // 逆算するのではなく、gridOffsetX = screenX - this.x*(bw+3) で求める
+            const gridOffsetX = screenX - this.x * (bw + 3);
+            const gridOffsetY = screenY - this.y * (bh + 3);
+            screenX = gridOffsetX + this.animX * (bw + 3);
+            screenY = gridOffsetY + this.animY * (bh + 3);
+        }
         
         switch (this.state) {
             // Blocks that are not drawn
@@ -80,17 +92,17 @@ class Block {
                 {
                     const color = this.getColor();
                     ctx.fillStyle = color;
-                    ctx.fillRect(screenX, screenY, Config.getBlockWidth(), Config.getBlockHeight());
+                    ctx.fillRect(screenX, screenY, bw, bh);
                     ctx.strokeStyle = Colors.Block.FRAME;
-                    ctx.strokeRect(screenX, screenY, Config.getBlockWidth(), Config.getBlockHeight());
+                    ctx.strokeRect(screenX, screenY, bw, bh);
                     
                     // Special drawing for immovable data (red square in the upper right)
+                    const halfW = Math.floor(bw / 2);
+                    const halfH = Math.floor(bh / 2);
                     ctx.fillStyle = Colors.Block.FIXED_FORE;
-                    ctx.fillRect(screenX + Math.floor(Config.getBlockWidth() / 2) + 1, screenY, 
-                               Math.floor(Config.getBlockWidth() / 2), Math.floor(Config.getBlockHeight() / 2) - 2);
+                    ctx.fillRect(screenX + halfW + 1, screenY, halfW, halfH - 2);
                     ctx.strokeStyle = Colors.Block.FRAME;
-                    ctx.strokeRect(screenX + Math.floor(Config.getBlockWidth() / 2) + 1, screenY, 
-                                 Math.floor(Config.getBlockWidth() / 2), Math.floor(Config.getBlockHeight() / 2) - 2);
+                    ctx.strokeRect(screenX + halfW + 1, screenY, halfW, halfH - 2);
                 }
                 break;
                 
@@ -99,15 +111,15 @@ class Block {
                 {
                     const color = this.getColor();
                     ctx.fillStyle = color;
-                    ctx.fillRect(screenX, screenY, Config.getBlockWidth(), Config.getBlockHeight());
+                    ctx.fillRect(screenX, screenY, bw, bh);
                     ctx.strokeStyle = Colors.Block.FRAME;
-                    ctx.strokeRect(screenX, screenY, Config.getBlockWidth(), Config.getBlockHeight());
+                    ctx.strokeRect(screenX, screenY, bw, bh);
                     
                     // Special drawing for bad blocks (diagonal line)
                     ctx.strokeStyle = Colors.Block.BAD_FORE;
                     ctx.beginPath();
                     ctx.moveTo(screenX + 1, screenY + 1);
-                    ctx.lineTo(screenX + Config.getBlockWidth() - 2, screenY + Config.getBlockHeight() - 2);
+                    ctx.lineTo(screenX + bw - 2, screenY + bh - 2);
                     ctx.stroke();
                 }
                 break;
@@ -117,9 +129,9 @@ class Block {
                 {
                     const color = this.getColor();
                     ctx.fillStyle = color;
-                    ctx.fillRect(screenX, screenY, Config.getBlockWidth(), Config.getBlockHeight());
+                    ctx.fillRect(screenX, screenY, bw, bh);
                     ctx.strokeStyle = Colors.Block.FRAME;
-                    ctx.strokeRect(screenX, screenY, Config.getBlockWidth(), Config.getBlockHeight());
+                    ctx.strokeRect(screenX, screenY, bw, bh);
                 }
                 break;
         }
