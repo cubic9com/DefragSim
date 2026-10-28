@@ -1,10 +1,10 @@
 # Overview / 概要
 
-The DefragSim project displays a disk defragmentation tool-like animation.
+Remember watching a hard disk defrag? DefragSim recreates that oddly soothing animation as a web app that runs in your browser.
 
 \[日本語\]
 
-defragSim プロジェクトは、デフラグツール風のアニメを表示します。
+ハードディスクのデフラグ処理を眺めていたことを覚えていますか？「DefragSim」は、あの妙に心地よいアニメーションをブラウザ上で再現するウェブアプリです。
 
 # Video / 動画
 
