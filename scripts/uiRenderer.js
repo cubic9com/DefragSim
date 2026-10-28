@@ -10,6 +10,13 @@
  * hit counter for the disk defragmentation animation.
  */
 
+// Map each block state to a small integer, so the rendered appearance of
+// a cell can be compared with a single integer signature (see UIRenderer)
+const BLOCK_STATE_INDEX = {};
+Object.keys(BlockState).forEach((key, index) => {
+    BLOCK_STATE_INDEX[key] = index;
+});
+
 class UIRenderer {
     constructor() {
         this.state = AnimationState.READING_DRIVE_INFO_PHASE1;
@@ -19,6 +26,9 @@ class UIRenderer {
         this.hitCounter = 0;
         this.canvas = null;
         this.ctx = null;
+        this.staticCanvas = null;
+        this.staticCtx = null;
+        this.cellSignatures = null;
     }
     
     // Initialization
@@ -35,33 +45,49 @@ class UIRenderer {
         
         // Initialize hit counter
         this.hitCounter = 0;
+
+        // Create the static layer: an offscreen canvas that caches
+        // everything that does not move (see draw())
+        this.staticCanvas = document.createElement('canvas');
+        this.staticCanvas.width = this.screenWidth;
+        this.staticCanvas.height = this.screenHeight;
+        this.staticCtx = this.staticCanvas.getContext('2d');
+        this.cellSignatures = null;
     }
     
-    // Draw UI elements
-    drawUI() {
-        const ctx = this.ctx;
-        
-        // Title bar
+    // Draw the title bar (static: rendered onto the static layer)
+    drawTitleBar(ctx) {
+        // Title bar background
         ctx.fillStyle = Colors.UI.TITLE_BAR_BACK;
         ctx.fillRect(0, 0, this.screenWidth, Config.TITLE_BAR_HEIGHT);
-        
+
         // Buttons in the title bar
         this.drawTitleBarButtons(ctx);
-        
+
         // Title text
         ctx.fillStyle = Colors.UI.TITLE_BAR_TEXT;
         ctx.font = '12px monospace';
         ctx.fillText(getLocalizedText('Defragmenting Drive C', 'ドライブCをデフラグ中'), 5, 14);
-        
+    }
+
+    // Draw the parts of the UI that change while the animation runs
+    drawDynamicUI() {
+        const ctx = this.ctx;
+
         // Status area at the bottom
         const statusY = this.screenHeight - 50;  // 52 pixels from bottom for status text
         const progressBarY = this.screenHeight - 41;  // 43 pixels from bottom for progress bar
         const percentageY = this.screenHeight - 10;   // 10 pixels from bottom for percentage
-        
+
+        // Clear the status area (on the static layer, this area only
+        // contains the window background color)
+        ctx.fillStyle = Colors.UI.WINDOW_BACK;
+        ctx.fillRect(0, this.screenHeight - 64, this.screenWidth, 64);
+
         // Status message
         ctx.fillStyle = Colors.UI.BUTTON_TEXT;
         ctx.font = '12px monospace';
-        
+
         let statusMessage = '';
         switch (this.state) {
             case AnimationState.READING_DRIVE_INFO_PHASE1:
@@ -78,18 +104,18 @@ class UIRenderer {
                 statusMessage = getLocalizedText('The drive was damaged!!!', 'ドライブが破損しました！！！');
                 break;
         }
-        
+
         ctx.fillText(statusMessage, 10, statusY);
-        
+
         // Progress bar
         this.drawProgressBar(ctx, progressBarY);
-        
+
         // Completion percentage
         ctx.fillStyle = Colors.UI.BUTTON_TEXT;
         ctx.font = '12px monospace';
         ctx.fillText(`${this.completionPercentage}% ${getLocalizedText('Complete', '完了')}`, 12, percentageY);
     }
-    
+
     // Draw title bar buttons
     drawTitleBarButtons(ctx) {
         // Close button
@@ -165,6 +191,100 @@ class UIRenderer {
         }
     }
     
+    // Compute a compact signature of how a cell is rendered: the block
+    // state plus the moving/exploding flags (a moving or exploding block
+    // is not drawn in its own cell)
+    cellSignature(block) {
+        return BLOCK_STATE_INDEX[block.state] * 4 +
+            (block.isMoving ? 2 : 0) +
+            (block.isExploding ? 1 : 0);
+    }
+
+    // Draw one cell on the static layer
+    drawStaticCell(block, screenX, screenY, blockWidth, blockHeight) {
+        const ctx = this.staticCtx;
+
+        // Erase the previous content of the cell (with a 1px margin,
+        // because the block frame is stroked centered on the cell border)
+        ctx.fillStyle = Colors.UI.GRID_BACK;
+        ctx.fillRect(screenX - 1, screenY - 1, blockWidth + 2, blockHeight + 2);
+
+        // Moving and exploding blocks are drawn on the main canvas instead
+        if (!block.isMoving && !block.isExploding) {
+            block.draw(ctx, this.state, screenX, screenY, blockWidth, blockHeight);
+        }
+    }
+
+    // Render everything that does not move onto the static layer
+    renderStaticLayer(gridManager) {
+        const ctx = this.staticCtx;
+
+        // Clear the layer with the window background color
+        ctx.fillStyle = Colors.UI.WINDOW_BACK;
+        ctx.fillRect(0, 0, this.screenWidth, this.screenHeight);
+
+        const gridOffsetX = Config.getGridOffsetX();
+        const gridOffsetY = Config.getGridOffsetY();
+        const blockWidth = Config.getBlockWidth();
+        const blockHeight = Config.getBlockHeight();
+        const blockStepX = blockWidth + 3;
+        const blockStepY = blockHeight + 3;
+        const rows = gridManager.getRowCount();
+        const cols = gridManager.getColumnCount();
+
+        // Fill the grid area background with white
+        const gridX = gridOffsetX - 3;
+        const gridY = gridOffsetY - 3;
+        const gridWidth = cols * blockStepX + 4;
+        const gridHeight = rows * blockStepY + 4;
+
+        ctx.fillStyle = Colors.UI.GRID_BACK;
+        ctx.fillRect(gridX, gridY, gridWidth, gridHeight);
+
+        // Grid area frame
+        ctx.strokeStyle = Colors.UI.GRID_FRAME;
+        ctx.strokeRect(gridX, gridY, gridWidth, gridHeight);
+
+        // Title bar
+        this.drawTitleBar(ctx);
+
+        // Draw all cells, remembering how each one was rendered
+        this.cellSignatures = new Int32Array(rows * cols);
+        for (let y = 0; y < rows; y++) {
+            const baseScreenY = gridOffsetY + y * blockStepY;
+            for (let x = 0; x < cols; x++) {
+                const block = gridManager.getBlock(x, y);
+                this.drawStaticCell(block, gridOffsetX + x * blockStepX, baseScreenY, blockWidth, blockHeight);
+                this.cellSignatures[y * cols + x] = this.cellSignature(block);
+            }
+        }
+    }
+
+    // Update only the cells whose appearance changed on the static layer
+    updateStaticLayer(gridManager) {
+        const gridOffsetX = Config.getGridOffsetX();
+        const gridOffsetY = Config.getGridOffsetY();
+        const blockWidth = Config.getBlockWidth();
+        const blockHeight = Config.getBlockHeight();
+        const blockStepX = blockWidth + 3;
+        const blockStepY = blockHeight + 3;
+        const rows = gridManager.getRowCount();
+        const cols = gridManager.getColumnCount();
+
+        for (let y = 0; y < rows; y++) {
+            const baseScreenY = gridOffsetY + y * blockStepY;
+            for (let x = 0; x < cols; x++) {
+                const block = gridManager.getBlock(x, y);
+                const index = y * cols + x;
+                const signature = this.cellSignature(block);
+                if (signature !== this.cellSignatures[index]) {
+                    this.cellSignatures[index] = signature;
+                    this.drawStaticCell(block, gridOffsetX + x * blockStepX, baseScreenY, blockWidth, blockHeight);
+                }
+            }
+        }
+    }
+
     // Draw hit counter
     drawHitCounter() {
         const ctx = this.ctx;
@@ -194,11 +314,22 @@ class UIRenderer {
     // Draw grid and UI elements
     draw(gridManager, animationManager) {
         const ctx = this.ctx;
-        
-        // Clear the canvas
-        ctx.fillStyle = Colors.UI.WINDOW_BACK;
-        ctx.fillRect(0, 0, this.screenWidth, this.screenHeight);
-        
+
+        // Refresh the cached static layer: a full render on the first
+        // frame, and only the changed cells on the following frames
+        if (this.cellSignatures === null) {
+            this.renderStaticLayer(gridManager);
+        } else {
+            this.updateStaticLayer(gridManager);
+        }
+
+        // Blit the static layer
+        ctx.drawImage(this.staticCanvas, 0, 0);
+
+        // Draw the parts of the UI that change while the animation runs
+        this.drawDynamicUI();
+
+        // Draw the blocks that are currently moving or exploding
         const gridOffsetX = Config.getGridOffsetX();
         const gridOffsetY = Config.getGridOffsetY();
         const blockWidth = Config.getBlockWidth();
@@ -207,38 +338,24 @@ class UIRenderer {
         const blockStepY = blockHeight + 3;
         const rows = gridManager.getRowCount();
         const cols = gridManager.getColumnCount();
-        
-        // Fill the grid area background with white
-        const gridX = gridOffsetX - 3;
-        const gridY = gridOffsetY - 3;
-        const gridWidth = cols * blockStepX + 4;
-        const gridHeight = rows * blockStepY + 4;
-        
-        ctx.fillStyle = Colors.UI.GRID_BACK;
-        ctx.fillRect(gridX, gridY, gridWidth, gridHeight);
-        
-        // Grid area frame
-        ctx.strokeStyle = Colors.UI.GRID_FRAME;
-        ctx.strokeRect(gridX, gridY, gridWidth, gridHeight);
-        
-        // Draw UI elements
-        this.drawUI();
-        
-        // Draw blocks
         const state = this.state;
+
         for (let y = 0; y < rows; y++) {
             const baseScreenY = gridOffsetY + y * blockStepY;
             for (let x = 0; x < cols; x++) {
-                gridManager.getBlock(x, y).draw(ctx, state, gridOffsetX + x * blockStepX, baseScreenY, blockWidth, blockHeight);
+                const block = gridManager.getBlock(x, y);
+                if (block.isMoving || block.isExploding) {
+                    block.draw(ctx, state, gridOffsetX + x * blockStepX, baseScreenY, blockWidth, blockHeight);
+                }
             }
         }
-        
+
         // Draw hit counter
         if (state === AnimationState.TOUCHED) {
             this.drawHitCounter();
         }
     }
-    
+
     // Set state
     setState(newState) {
         this.state = newState;

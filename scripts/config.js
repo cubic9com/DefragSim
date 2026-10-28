@@ -173,27 +173,33 @@ class Config {
     // Animation configuration
     // ========================================
     static get Animation() {
-        return {
-            // Block movement speed coefficient
-            MOVE_SPEED: 0.3,
-            
-            // Position threshold (differences below this are ignored)
-            POSITION_THRESHOLD: 0.05,
-            
-            // Gravity acceleration during explosion
-            GRAVITY: 0.4,
-            
-            // Defrag step interval (in frames)
-            DEFRAG_STEP_INTERVAL: 60,
-            
-            // Block movement delay time (in milliseconds)
-            BLOCK_MOVE_DELAY: 5,
-            
-            // Wait time until reset (in milliseconds)
-            RESET_DELAY: 3000
-        };
+        // Return a cached object: this getter is called for every moving
+        // block on every frame, so creating a new object on each call
+        // would churn the garbage collector
+        if (!Config.animationConfig) {
+            Config.animationConfig = {
+                // Block movement speed coefficient
+                MOVE_SPEED: 0.3,
+
+                // Position threshold (differences below this are ignored)
+                POSITION_THRESHOLD: 0.05,
+
+                // Gravity acceleration during explosion
+                GRAVITY: 0.4,
+
+                // Defrag step interval (in frames)
+                DEFRAG_STEP_INTERVAL: 60,
+
+                // Block movement delay time (in milliseconds)
+                BLOCK_MOVE_DELAY: 5,
+
+                // Wait time until reset (in milliseconds)
+                RESET_DELAY: 3000
+            };
+        }
+        return Config.animationConfig;
     }
-    
+
     // ========================================
     // Sound configuration
     // ========================================
@@ -237,3 +243,4 @@ class Config {
 
 // Initialize static instance
 Config.instance = null;
+Config.animationConfig = null;

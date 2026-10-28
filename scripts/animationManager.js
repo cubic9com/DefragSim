@@ -20,6 +20,8 @@ class AnimationManager {
         this.driveInfoPhase2ScanY = 0;
         this.driveInfoPhase2ScanCompleted = false;
         this.totalBlocksCache = -1;
+        this.unoptimizedBlocksCache = -1;
+        this.percentageFrameCounter = 0;
     }
     
     // Reset
@@ -32,6 +34,8 @@ class AnimationManager {
         this.driveInfoPhase2ScanY = 0;
         this.driveInfoPhase2ScanCompleted = false;
         this.totalBlocksCache = -1;
+        this.unoptimizedBlocksCache = -1;
+        this.percentageFrameCounter = 0;
     }
     
     // Block update process in reading drive info phase 1
@@ -95,40 +99,43 @@ class AnimationManager {
     updateBlocksInDefragmenting() {
         const rows = this.gridManager.getRowCount();
         const cols = this.gridManager.getColumnCount();
-        
-        const movingBlockPositions = [];
-        const readingBlockPositions = [];
-        
+
+        // Update all blocks, remembering which ones finished moving
+        // (collecting positions in temporary arrays every frame would
+        // churn the garbage collector)
+        let anyBlockCompleted = false;
         for (let y = 0; y < rows; y++) {
             for (let x = 0; x < cols; x++) {
                 const block = this.gridManager.getBlock(x, y);
-                if (block.isMoving) {
-                    movingBlockPositions.push({ x, y, block });
-                } else if (block.state === BlockState.READING) {
-                    readingBlockPositions.push({ x, y, block });
-                }
+                const wasMoving = block.isMoving;
                 block.updateMoving();
-            }
-        }
-        
-        let anyBlockCompleted = false;
-        for (const { x, y, block } of movingBlockPositions) {
-            if (!block.isMoving) {
-                anyBlockCompleted = true;
-                if (x === block.targetX && y === block.targetY) {
-                    block.state = BlockState.OPTIMIZED;
+
+                if (wasMoving && !block.isMoving) {
+                    anyBlockCompleted = true;
+                    if (x === block.targetX && y === block.targetY) {
+                        block.state = BlockState.OPTIMIZED;
+                    }
                 }
             }
         }
-        
+
+        // When a move completes, the blocks that were being read become free
         if (anyBlockCompleted) {
-            for (const { block } of readingBlockPositions) {
-                block.state = BlockState.FREE;
-                block.fileID = -1;
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const block = this.gridManager.getBlock(x, y);
+                    if (block.state === BlockState.READING) {
+                        block.state = BlockState.FREE;
+                        block.fileID = -1;
+                    }
+                }
             }
+
+            // The number of unoptimized blocks has changed
+            this.unoptimizedBlocksCache = -1;
         }
     }
-    
+
     // Update defrag step
     incrementDefragStep() {
         this.defragStep++;
@@ -188,16 +195,27 @@ class AnimationManager {
             this.totalBlocksCache = this.countTotalBlocks();
         }
         const totalBlocks = this.totalBlocksCache;
-        const unoptimizedBlocks = this.countUnoptimizedBlocks();
-        
-        if (totalBlocks > 0) {
-            const optimizedBlocks = totalBlocks - unoptimizedBlocks;
-            return Math.floor((optimizedBlocks * 100) / totalBlocks);
-        } else {
+
+        if (totalBlocks <= 0) {
             return 0; // If total blocks is 0, return 0% instead of 100%
         }
+
+        // Counting unoptimized blocks costs a full grid scan, so reuse the
+        // cached count: recount periodically, right after a move completes
+        // (the cache is invalidated in updateBlocksInDefragmenting), and on
+        // every frame near completion so the finish is detected promptly
+        this.percentageFrameCounter++;
+        if (this.unoptimizedBlocksCache < 0 ||
+            this.percentageFrameCounter >= 15 ||
+            this.unoptimizedBlocksCache <= 20) {
+            this.unoptimizedBlocksCache = this.countUnoptimizedBlocks();
+            this.percentageFrameCounter = 0;
+        }
+
+        const optimizedBlocks = totalBlocks - this.unoptimizedBlocksCache;
+        return Math.floor((optimizedBlocks * 100) / totalBlocks);
     }
-    
+
     // Calculate progress in reading drive information reading phase 1 (percentage)
     calculateDriveInfoPhase1CompletionPercentage() {
         const totalCells = this.gridManager.getRowCount() * this.gridManager.getColumnCount();

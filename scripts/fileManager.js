@@ -15,6 +15,7 @@ class FileManager {
         this.nextFileID = 0;
         this.currentFileToMove = -1;
         this.isMovingFile = false;
+        this.movingBlocks = [];
         
         this.assignFileIDs();
     }
@@ -24,6 +25,7 @@ class FileManager {
         this.nextFileID = 0;
         this.currentFileToMove = -1;
         this.isMovingFile = false;
+        this.movingBlocks = [];
         this.assignFileIDs();
     }
     
@@ -155,6 +157,10 @@ class FileManager {
     
     // Move file to target
     moveFileToTarget(fileBlocks, targetPositions, fileID) {
+        // Remember the moving blocks so updateFileMovement() does not
+        // need to scan the whole grid on every frame
+        this.movingBlocks = [];
+
         // Move each block in the file
         for (let i = 0; i < fileBlocks.length; i++) {
             const sourceX = fileBlocks[i].x;
@@ -179,6 +185,8 @@ class FileManager {
             // Set animation start position to source
             targetBlock.animX = sourceX;
             targetBlock.animY = sourceY;
+
+            this.movingBlocks.push(targetBlock);
         }
         
         // Set file moving flag
@@ -189,25 +197,19 @@ class FileManager {
     // Update file movement
     updateFileMovement() {
         if (this.isMovingFile) {
-            let allMoved = true;
-            for (let y = 0; y < this.gridManager.getRowCount(); y++) {
-                for (let x = 0; x < this.gridManager.getColumnCount(); x++) {
-                    const block = this.gridManager.getBlock(x, y);
-                    if (block.fileID === this.currentFileToMove && block.isMoving) {
-                        allMoved = false;
-                        break;
-                    }
+            // Only the blocks of the file being moved need to be checked
+            for (const block of this.movingBlocks) {
+                if (block.isMoving) {
+                    return; // Still moving
                 }
-                if (!allMoved) break;
             }
-            
-            if (allMoved) {
-                this.isMovingFile = false;
-                this.currentFileToMove = -1;
-            }
+
+            this.isMovingFile = false;
+            this.currentFileToMove = -1;
+            this.movingBlocks = [];
         }
     }
-    
+
     // Move next file
     moveNextFile() {
         // Find unoptimized files
